@@ -142,6 +142,7 @@ struct LibraryStatistics{
 	float C_W;
 	float insertMean;
 	float insertStd;
+	bool mp;
 };
 
 
@@ -149,7 +150,7 @@ struct LibraryStatistics{
 
 
 
-static readStatus computeReadType(BamAlignment al, uint32_t max_insert, bool is_mp) {
+static readStatus computeReadType(BamAlignment al, uint32_t max_insert, uint32_t min_insert,bool is_mp) {
 	if (!al.IsMapped()) {
 		return unmapped;
 	}
@@ -243,7 +244,7 @@ static float ExpectedLinks(uint32_t sizeA, uint32_t sizeB, uint32_t gap, float i
 }
 
 
-static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genomeLength, uint32_t max_insert, bool is_mp) {
+static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genomeLength, uint32_t max_insert, uint32_t min_insert,bool is_mp,int quality) {
 	BamReader bamFile;
 	bamFile.Open(bamFileName);
 	LibraryStatistics library;
@@ -254,6 +255,9 @@ static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genome
 	uint32_t lowQualityReads  = 0;
 	uint32_t mappedReads 	  = 0;
 	uint64_t mappedReadsLength= 0;
+
+
+
 
 	uint64_t insertsLength = 0; // total inserts length
 	float insertMean;
@@ -281,6 +285,7 @@ static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genome
 	float C_S = 0; // coverage induced by singletons
 	float C_D = 0; // coverage induced by reads with mate on a different contigs
 
+
 	// compute mean and std on the fly
 	float Mk = 0;
 	float Qk = 0;
@@ -292,26 +297,28 @@ static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genome
 	BamAlignment al;
 	while ( bamFile.GetNextAlignmentCore(al) ) {
 		reads ++;
-		readStatus read_status = computeReadType(al, max_insert, is_mp);
+		readStatus read_status = computeReadType(al, max_insert, min_insert,is_mp);
 		if (read_status != unmapped and read_status != lowQualty) {
 			mappedReads ++;
 			mappedReadsLength += al.Length;
 		}
 
-		if (al.IsFirstMate() && read_status == pair_proper) {
-			iSize = abs(al.InsertSize);
-			if(counterK == 1) {
-				Mk = iSize;
-				Qk = 0;
-				counterK++;
-			} else {
-				float oldMk = Mk;
-				float oldQk = Qk;
-				Mk = oldMk + (iSize - oldMk)/counterK;
-				Qk = oldQk + (counterK-1)*(iSize - oldMk)*(iSize - oldMk)/(float)counterK;
-				counterK++;
+		if (al.IsFirstMate() && read_status) {
+			if(al.IsMapped() and al.MapQuality > quality and al.RefID == al.MateRefID and al.MatePosition-al.Position+1 < max_insert ){
+				iSize = abs(al.InsertSize);
+				if(counterK == 1) {
+					Mk = iSize;
+					Qk = 0;
+					counterK++;
+				} else {
+					float oldMk = Mk;
+					float oldQk = Qk;
+					Mk = oldMk + (iSize - oldMk)/counterK;
+					Qk = oldQk + (counterK-1)*(iSize - oldMk)*(iSize - oldMk)/(float)counterK;
+					counterK++;
+				}
+				insertsLength += iSize;
 			}
-			insertsLength += iSize;
 		}
 
 		switch (read_status) {
@@ -348,8 +355,6 @@ static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genome
 
 	}
 
-
-
 	cout << "LIBRARY STATISTICS\n";
 	cout << "\t total reads number "	<< reads << "\n";
 	cout << "\t total mapped reads " 	<< mappedReads << "\n";
@@ -357,7 +362,6 @@ static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genome
 	cout << "\t proper pairs " 			<< matedReads << "\n";
 	cout << "\t wrong distance "		<< wrongDistanceReads << "\n";
 	cout << "\t zero quality reads " 	<< lowQualityReads << "\n";
-	cout << "\t wrongly oriented "		<< wronglyOrientedReads << "\n";
 	cout << "\t wrongly contig "		<< matedDifferentContig << "\n";
 	cout << "\t singletons " 			<< singletonReads << "\n";
 
@@ -372,6 +376,11 @@ static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genome
 	library.C_S = C_S = singletonReadsLength/(float)genomeLength;
 	library.C_D = C_D = matedDifferentContigLength/(float)genomeLength;
 	library.insertMean = insertMean = Mk;
+	if(reads-wronglyOrientedReads > wronglyOrientedReads){
+		library.mp=true;
+	}else{
+		library.mp=false;
+	}
 	Qk = sqrt(Qk/counterK);
 	library.insertStd = insertStd = Qk;
 
@@ -388,7 +397,6 @@ static LibraryStatistics computeLibraryStats(string bamFileName, uint64_t genome
 	bamFile.Close();
 	return library;
 }
-
 
 
 

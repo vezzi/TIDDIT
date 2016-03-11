@@ -1,76 +1,61 @@
 import sys,re
 
 def readVCFLine(source,line):
+    variation   = line.rstrip().split("\t")
+    event_type=""
+    chrA=variation[0];
+    startA=int(variation[1]);
+    startB=0;
 
-        variation   = line.rstrip().split("\t")
-        if(source == "CNVnator"):
-                #print(variation)
-                chrA=variation[0];
-                chrB=chrA;
+    description ={}
+    INFO=variation[7].split(";");
+    for tag in INFO:
+        tag=tag.split("=")
+        if(len(tag) > 1):
+            description[tag[0]]=tag[1];
+    #Delly translocations
+    if("TRA" in variation[4]):
+        endA=startA
 
-                startA=int(variation[1]);
-                startB=startA;
+        event_type="BND"
+        chrB=description["CHR2"]
+        startB=int(description["END"]);
+        endB=int(description["END"]);       
 
-                endA=int(variation[7].split(";")[0].split("=")[1]);
-                endB=endA;
-
-                event_type=variation[4].strip("<").rstrip(">");
-
-        elif(source == "FindTranslocations"):
-
-                description = dict(item.split("=") for item in variation[7].split(";"))
-                #now I need to collapse similar variations
-                chrA    = description["CHRA"]
-                startA  = int(description["WINA"].split(",")[0])
-                endA    = int(description["WINA"].split(",")[1])
-                chrB    = description["CHRB"]
-                startB  = int(description["WINB"].split(",")[0])
-                endB    = int(description["WINB"].split(",")[1])
-                event_type=description["SVTYPE"]
-
-        #if the source is fermikit
-        elif(source == "htsbox-abreak-r303"):
-
-            chrA=variation[0];
-            startA=int(variation[1]);
-
-            description = dict(item.split("=") for item in variation[7].split(";"))
-            if(variation[4] == "<INS>" or variation[4] == "<DEL>" or variation[4] == "<DUP>"):
-                chrB=chrA;
+    #intrachromosomal variant
+    elif(not  "]" in variation[4] and not "[" in variation[4]):
+        chrB=chrA;
                 
-                startB=startA;
-                endA=int(description["END"]);
-                endB=endA
-                #sometimes the fermikit intra chromosomal events are inverted i.e the end pos is a lower position than the start pos
-                if(endB <startB):
-                    tmp=endB;
-                    endB=startB;
-                    startB=tmp;
+        startB=startA;
+        endA=int(description["END"]);
+        endB=endA
+        #sometimes the fermikit intra chromosomal events are inverted i.e the end pos is a lower position than the start pos
+        if(endB <startB):
+            tmp=endB;
+            endB=startB;
+            startB=tmp;
 
-                    tmp = endA;
-                    endA=startA;
-                    startA=tmp;
-                event_type=description["SVTYPE"];
+            tmp = endA;
+            endA=startA;
+            startA=tmp;
 
-            else:
-                B=variation[4];
-                #fermikit assigns translocations as precise events, thus we need to create a small interval around the positions of the translocations or we will be unlikely to overlap similar fermikit events
-                endA=startA+500;
-                startA=startA-500;
+        event_type=variation[4].strip("<").rstrip(">");
+    #if the variant is given as a breakpoint, it is stored as a precise variant in the db
+    else:
+        B=variation[4];
+        endA=startA;
 
-                B=re.split("[],[]",B);
-                for string in B:
-                    if string.count(":"):
-                        lst=string.split(":");
-                        chrB=lst[0]
-                        startB=int(lst[1]);
-                        endB=startB+500;
-                        startB=startB-500;
-                event_type=description["SVTYPE"]
+        B=re.split("[],[]",B);
+        for string in B:
+            if string.count(":"):
+                lst=string.split(":");
+                chrB=lst[0]
+                startB=int(lst[1]);
+                endB=startB
+
+        event_type="BND"
+        if(chrA == chrB):
+            endA=endB
+            startB=startA;
                 
-                
-                
-        else:
-                print("error, non supported vcf source");
-                sys.exit();
-        return(chrA, startA,endA,chrB, startB, endB, event_type);
+    return( chrA.replace("chr","").replace("CHR",""), startA,endA , chrB.replace("chr","").replace("CHR",""), startB, endB, event_type);
