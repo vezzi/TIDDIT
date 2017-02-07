@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 	vm["--bin_size"]="";
 	
 	string coverage_help="\nUsage: TIDDIT --cov [Mode] --bam inputfile [--output prefix] \nOptions:only one mode may be selected\n";
-	coverage_help +="\n\t-bin_size\tuse bins of specified size(default = 500bp) to measure the coverage of the entire bam file, set output to stdout to print to stdout\n";
+	coverage_help +="\n\t--bin_size\tuse bins of specified size(default = 500bp) to measure the coverage of the entire bam file, set output to stdout to print to stdout\n";
 	
 	
 	//store the options in a map
@@ -252,8 +252,8 @@ int main(int argc, char **argv) {
 		if(vm["--bin_size"] != ""){
 			binSize =convert_str( vm["--bin_size"], "--bin_size");
 		}
-		if(vm["-o"] != ""){
-		    outputFileHeader=vm["-o"];
+		if(vm["--output"] != ""){
+		    outputFileHeader=vm["--output"];
 		}
 
 		calculateCoverage = new Cov(binSize,alignmentFile,outputFileHeader);
